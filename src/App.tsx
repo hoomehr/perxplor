@@ -4,8 +4,8 @@ import GameCanvas, { Player, Treasure } from "./components/GameCanvas";
 import ZoomSlider from "./components/ZoomSlider";
 
 const GRID_SIZE = 500;
-const INITIAL_ZOOM = 20; // Start at area (100x100)
-const ZOOM_LEVELS = [100, 20, 2]; // 500x500, 100x100, 10x10
+const INITIAL_ZOOM = 100; // Start at full map (500x500)
+const ZOOM_LEVELS = [100, 50, 20, 10, 2]; // 500x500, 250x250, 100x100, 50x50, 10x10
 
 // Generate random treasures for demo
 function generateTreasures(count: number): Treasure[] {
