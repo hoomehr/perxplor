@@ -28,6 +28,7 @@ function App() {
   const [treasures] = useState<Treasure[]>(generateTreasures(150));
   const [score, setScore] = useState(0);
   const [collectedTreasures, setCollectedTreasures] = useState<Treasure[]>([]);
+  const [openedTreasures, setOpenedTreasures] = useState<{[key: string]: boolean}>({});
 
   // When wallet connects, spawn player at random position
   const handleConnect = (addr: string) => {
@@ -89,6 +90,15 @@ function App() {
                   treasures={treasures} 
                   zoom={zoom} 
                   onMove={handleMove}
+                  openedTreasures={openedTreasures}
+                  onOpenTreasure={(treasure) => {
+                    // Mark treasure as opened using a unique key
+                    const treasureKey = `${treasure.x}-${treasure.y}`;
+                    setOpenedTreasures(prev => ({
+                      ...prev,
+                      [treasureKey]: true
+                    }));
+                  }}
                   onCollectTreasure={(treasure) => {
                     setScore(prev => prev + 10);
                     setCollectedTreasures(prev => [...prev, treasure]);
