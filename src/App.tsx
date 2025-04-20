@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from "react";
-import MetaMaskLogin from "./components/MetaMaskLogin";
+import WalletLogin from "./components/MetaMaskLogin";
 import GameCanvas, { Player, Treasure } from "./components/GameCanvas";
 import ZoomSlider from "./components/ZoomSlider";
+import CollectedTreasuresList from "./components/CollectedTreasuresList";
+import ProfileBanner from "./components/ProfileBanner";
 import treasureData from "./data/treasureData.json";
+import { userService, User } from "./services/UserService";
 
 const GRID_SIZE = 500;
 const INITIAL_ZOOM = 100; // Start at full map (500x500)
@@ -36,21 +39,91 @@ function calculateTreasureValue(rarity: string): number {
 
 function App() {
   const [address, setAddress] = useState<string | null>(null);
+  const [walletType, setWalletType] = useState<'metamask' | 'phantom' | 'email' | 'other'>('other');
   const [player, setPlayer] = useState<Player | null>(null);
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
   const [treasures] = useState<Treasure[]>(loadTreasuresFromData());
   const [score, setScore] = useState(0);
   const [collectedTreasures, setCollectedTreasures] = useState<Treasure[]>([]);
   const [openedTreasures, setOpenedTreasures] = useState<{[key: string]: boolean}>({});
+  const [showTreasuresList, setShowTreasuresList] = useState(false);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
+  // Load user data from persistence
+  useEffect(() => {
+    if (address) {
+      // Try to load user data
+      const userData = userService.getUserById(address);
+      console.log('Loading user data:', userData);
+      
+      if (userData) {
+        // Restore user data
+        setCurrentUser(userData);
+        setCollectedTreasures(userData.treasures || []);
+        setScore(userData.score || 0);
+        
+        // Mark all treasures as opened
+        const opened: {[key: string]: boolean} = {};
+        userData.treasures.forEach(t => {
+          const key = `${t.x}-${t.y}`;
+          opened[key] = true;
+        });
+        setOpenedTreasures(opened);
+      } else {
+        // Create new user
+        const newUser = userService.saveUser({
+          id: address,
+          walletAddress: walletType !== 'email' ? address : undefined,
+          email: walletType === 'email' ? address.replace('email:', '') : undefined,
+          walletType,
+          treasures: [],
+          score: 0
+        });
+        setCurrentUser(newUser);
+      }
+    }
+  }, [address, walletType]);
+  
   // When wallet connects, spawn player at random position
-  const handleConnect = (addr: string) => {
-    setAddress(addr);
-    setPlayer({
-      x: Math.floor(GRID_SIZE / 2),
-      y: Math.floor(GRID_SIZE / 2),
-      address: addr,
-    });
+  const handleConnect = (addr: string, type: 'metamask' | 'phantom' | 'email' | 'other') => {
+    try {
+      setIsLoading(true);
+      console.log(`Connected with ${type} wallet: ${addr}`);
+      
+      // Set address and wallet type
+      setAddress(addr);
+      setWalletType(type);
+      
+      // Create player at center of map
+      setPlayer({
+        x: Math.floor(GRID_SIZE / 2),
+        y: Math.floor(GRID_SIZE / 2),
+        address: addr,
+      });
+      
+      // Loading complete
+      setIsLoading(false);
+    } catch (error) {
+      console.error('Error connecting wallet:', error);
+      setIsLoading(false);
+    }
+  };
+  
+  // Handle logout
+  const handleLogout = () => {
+    // Clear local state
+    setAddress(null);
+    setWalletType('other');
+    setPlayer(null);
+    setScore(0);
+    setCollectedTreasures([]);
+    setOpenedTreasures({});
+    setCurrentUser(null);
+    setShowTreasuresList(false);
+    
+    // Log the logout action
+    console.log('User logged out');
   };
 
   // Handle player movement
@@ -78,26 +151,25 @@ function App() {
 
         {!address ? (
           <div className="flex justify-center">
-            <MetaMaskLogin onConnect={handleConnect} />
+            <WalletLogin onConnect={handleConnect} />
+          </div>
+        ) : isLoading ? (
+          <div className="flex justify-center items-center py-20">
+            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+            <p className="ml-4 text-blue-500">Loading game data...</p>
           </div>
         ) : (
           <div className="space-y-4">
-            <div className="bg-gray-800 rounded-lg p-4 flex justify-between items-center">
-              <div className="text-gray-300">
-                Wallet: <span className="font-mono text-blue-400">{address.slice(0, 6)}...{address.slice(-4)}</span>
-              </div>
-              <div className="flex items-center space-x-4">
-                <div className="text-yellow-500 font-bold">
-                  Score: {score}
-                </div>
-                <div className="text-sm text-gray-400">
-                  Treasures: {collectedTreasures.length}/{treasures.length}
-                </div>
-              </div>
-            </div>
-
+            <ProfileBanner 
+              address={address || ''}
+              walletType={walletType}
+              score={score} 
+              onLogout={handleLogout}
+              onShowTreasuresList={() => setShowTreasuresList(true)}
+              collectedTreasures={collectedTreasures}
+            />
             <div className="relative">
-              <div className="rounded-lg overflow-hidden border-2 border-gray-700 shadow-xl">
+              <div className="rounded-lg shadow-xl">
                 <GameCanvas 
                   player={player} 
                   treasures={treasures} 
@@ -118,7 +190,11 @@ function App() {
                     
                     // Only collect treasure once
                     if (!openedTreasures[treasureKey]) {
-                      setScore(prev => prev + calculateTreasureValue(treasure.rarity || 'Common'));
+                      // Calculate treasure value
+                      const treasureValue = calculateTreasureValue(treasure.rarity || 'Common');
+                      
+                      // Update local state
+                      setScore(prev => prev + treasureValue);
                       setCollectedTreasures(prev => [...prev, treasure]);
                       
                       // Mark as opened
@@ -126,6 +202,14 @@ function App() {
                         ...prev,
                         [treasureKey]: true
                       }));
+                      
+                      // Save to user's persistence
+                      if (address) {
+                        const updatedUser = userService.addTreasureToUser(address, treasure);
+                        if (updatedUser) {
+                          setCurrentUser(updatedUser);
+                        }
+                      }
                       
                       console.log(`Collected treasure: ${treasure.name} at ${treasure.x},${treasure.y}`);
                     }
@@ -139,12 +223,20 @@ function App() {
 
             <div className="flex justify-between items-center text-sm text-gray-400 bg-gray-800 rounded-lg p-4">
               <div>
-                <span className="font-bold text-blue-400">Controls:</span> Use WASD or Arrow Keys to move
+                <span className="font-bold text-blue-400">Controls:</span> Use WASD or Arrow Keys to move, or click to move towards a location
               </div>
               <div>
-                <span className="font-bold text-blue-400">Tip:</span> Adjust zoom to explore different areas
+                <span className="font-bold text-blue-400">Tip:</span> Walk on treasures to collect them
               </div>
             </div>
+            
+            {/* Collected Treasures List Modal */}
+            {showTreasuresList && (
+              <CollectedTreasuresList 
+                treasures={collectedTreasures}
+                onClose={() => setShowTreasuresList(false)}
+              />
+            )}
           </div>
         )}
       </div>
