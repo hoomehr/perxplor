@@ -2,30 +2,43 @@ import React, { useState, useEffect } from "react";
 import MetaMaskLogin from "./components/MetaMaskLogin";
 import GameCanvas, { Player, Treasure } from "./components/GameCanvas";
 import ZoomSlider from "./components/ZoomSlider";
+import treasureData from "./data/treasureData.json";
 
 const GRID_SIZE = 500;
 const INITIAL_ZOOM = 100; // Start at full map (500x500)
 const ZOOM_LEVELS = [100, 50, 20, 10, 2]; // 500x500, 250x250, 100x100, 50x50, 10x10
 
-// Generate random treasures for demo
-function generateTreasures(count: number): Treasure[] {
-  const emojis = ["💎", "🎁", "🪙", "🌟", "🍀", "🧸", "⚡️", "🔑"];
-  const treasures: Treasure[] = [];
-  for (let i = 0; i < count; i++) {
-    treasures.push({
-      x: Math.floor(Math.random() * GRID_SIZE),
-      y: Math.floor(Math.random() * GRID_SIZE),
-      emoji: emojis[Math.floor(Math.random() * emojis.length)]
-    });
-  }
-  return treasures;
+// Load treasures from our database
+function loadTreasuresFromData(): Treasure[] {
+  return treasureData.treasures.map(t => ({
+    id: t.id,
+    x: t.x,
+    y: t.y,
+    emoji: t.emoji,
+    name: t.name,
+    description: t.description,
+    rarity: t.rarity,
+    biome: t.biome
+  }));
+}
+
+// Calculate treasure value based on rarity
+function calculateTreasureValue(rarity: string): number {
+  const valueMap: {[key: string]: number} = {
+    'Common': 10,
+    'Uncommon': 50,
+    'Rare': 200,
+    'Epic': 500,
+    'Legendary': 1000
+  };
+  return valueMap[rarity] || 10; // Default to 10 if rarity not found
 }
 
 function App() {
   const [address, setAddress] = useState<string | null>(null);
   const [player, setPlayer] = useState<Player | null>(null);
   const [zoom, setZoom] = useState(INITIAL_ZOOM);
-  const [treasures] = useState<Treasure[]>(generateTreasures(150));
+  const [treasures] = useState<Treasure[]>(loadTreasuresFromData());
   const [score, setScore] = useState(0);
   const [collectedTreasures, setCollectedTreasures] = useState<Treasure[]>([]);
   const [openedTreasures, setOpenedTreasures] = useState<{[key: string]: boolean}>({});
@@ -98,10 +111,24 @@ function App() {
                       ...prev,
                       [treasureKey]: true
                     }));
+                    console.log(`Opened treasure at ${treasure.x},${treasure.y}`);
                   }}
                   onCollectTreasure={(treasure) => {
-                    setScore(prev => prev + 10);
-                    setCollectedTreasures(prev => [...prev, treasure]);
+                    const treasureKey = `${treasure.x}-${treasure.y}`;
+                    
+                    // Only collect treasure once
+                    if (!openedTreasures[treasureKey]) {
+                      setScore(prev => prev + calculateTreasureValue(treasure.rarity || 'Common'));
+                      setCollectedTreasures(prev => [...prev, treasure]);
+                      
+                      // Mark as opened
+                      setOpenedTreasures(prev => ({
+                        ...prev,
+                        [treasureKey]: true
+                      }));
+                      
+                      console.log(`Collected treasure: ${treasure.name} at ${treasure.x},${treasure.y}`);
+                    }
                   }}
                 />
               </div>

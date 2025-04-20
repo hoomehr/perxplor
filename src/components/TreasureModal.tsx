@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Treasure } from './GameCanvas';
+import treasureData from '../data/treasureData.json';
 
 interface TreasureModalProps {
   treasure: Treasure | null;
@@ -20,23 +21,16 @@ const TreasureModal: React.FC<TreasureModalProps> = ({ treasure, onClose }) => {
   
   if (!treasure) return null;
 
-  // Generate deterministic properties based on treasure coordinates
-  const generateTreasureProperties = (x: number, y: number) => {
-    // Use the coordinates to create a deterministic seed
-    const seed = x * 1000 + y;
-    
-    // Rarity based on coordinates
-    const rarityLevels = ['Common', 'Uncommon', 'Rare', 'Epic', 'Legendary'];
-    const rarityIndex = Math.abs((seed * 13) % rarityLevels.length);
-    const rarity = rarityLevels[rarityIndex];
-    
-    // Power level based on coordinates
-    const powerLevel = Math.abs((seed * 17) % 100) + 1;
-    
-    // Age based on coordinates
-    const age = Math.abs((seed * 23) % 1000) + 1;
-    
-    // Value based on rarity and power level
+  // Get biome description for the treasure's biome
+  const getBiomeDescription = (biome?: string) => {
+    if (!biome || !treasureData.biomes[biome as keyof typeof treasureData.biomes]) {
+      return "Unknown lands";
+    }
+    return treasureData.biomes[biome as keyof typeof treasureData.biomes].description;
+  };
+  
+  // Calculate treasure value based on rarity
+  const calculateTreasureValue = (rarity?: string) => {
     const valueMap: {[key: string]: number} = {
       'Common': 10,
       'Uncommon': 50,
@@ -44,27 +38,37 @@ const TreasureModal: React.FC<TreasureModalProps> = ({ treasure, onClose }) => {
       'Epic': 500,
       'Legendary': 1000
     };
-    const baseValue = valueMap[rarity] || 10; // Default to 10 if rarity not found
-    const value = baseValue + (powerLevel * 5);
-    
-    // Origin based on coordinates
-    const origins = [
-      'Ancient Elven Forest',
-      'Dwarven Mountains',
-      'Celestial Realm',
-      'Abyssal Depths',
-      'Forgotten Temple',
-      'Enchanted Grove',
-      'Dragon\'s Lair',
-      'Wizard\'s Tower'
-    ];
-    const originIndex = Math.abs((seed * 29) % origins.length);
-    const origin = origins[originIndex];
-    
-    return { rarity, powerLevel, age, value, origin };
+    return valueMap[rarity || 'Common'] || 10;
   };
   
-  const { rarity, powerLevel, age, value, origin } = generateTreasureProperties(treasure.x, treasure.y);
+  // Determine the age of the treasure (more deterministic now)
+  const getTreasureAge = (id?: string) => {
+    if (!id) return 100;
+    const idNumber = parseInt(id.replace(/\D/g, '') || '1', 10);
+    return (idNumber * 97) % 1000 + 50; // Range from 50-1049 years
+  };
+  
+  // Power level determination based on rarity and id
+  const getPowerLevel = (rarity?: string, id?: string) => {
+    const rarityMultiplier: {[key: string]: number} = {
+      'Common': 0.5,
+      'Uncommon': 0.7,
+      'Rare': 0.8,
+      'Epic': 0.9,
+      'Legendary': 1.0
+    };
+    
+    if (!id) return 50;
+    const idNumber = parseInt(id.replace(/\D/g, '') || '1', 10);
+    const baseLevel = (idNumber * 37) % 70 + 30; // 30-99 base level
+    return Math.floor(baseLevel * (rarityMultiplier[rarity || 'Common'] || 0.5));
+  };
+  
+  const rarity = treasure.rarity || 'Common';
+  const biomeDesc = getBiomeDescription(treasure.biome);
+  const value = calculateTreasureValue(rarity);
+  const age = getTreasureAge(treasure.id);
+  const powerLevel = getPowerLevel(rarity, treasure.id);
   
 
   return (
@@ -76,7 +80,7 @@ const TreasureModal: React.FC<TreasureModalProps> = ({ treasure, onClose }) => {
         <div className="text-center mb-6">
           <div className="text-6xl mb-4">{treasure.emoji}</div>
           <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-500 text-transparent bg-clip-text">
-            Mystical Treasure
+            {treasure.name || "Mystical Treasure"}
           </h2>
         </div>
 
@@ -87,8 +91,14 @@ const TreasureModal: React.FC<TreasureModalProps> = ({ treasure, onClose }) => {
           </div>
 
           <div className="bg-gray-700 bg-opacity-50 p-3 rounded-lg">
-            <div className="text-gray-400 text-sm">Origin</div>
-            <div className="text-white">{origin}</div>
+            <div className="text-gray-400 text-sm">Biome</div>
+            <div className="text-white">{treasure.biome ? treasure.biome.charAt(0).toUpperCase() + treasure.biome.slice(1) : "Unknown"}</div>
+            <div className="text-gray-300 text-xs mt-1">{biomeDesc}</div>
+          </div>
+          
+          <div className="bg-gray-700 bg-opacity-50 p-3 rounded-lg">
+            <div className="text-gray-400 text-sm">Description</div>
+            <div className="text-white">{treasure.description || "A mysterious artifact from ancient times."}</div>
           </div>
 
           <div className="bg-gray-700 bg-opacity-50 p-3 rounded-lg">
@@ -146,6 +156,7 @@ const TreasureModal: React.FC<TreasureModalProps> = ({ treasure, onClose }) => {
               e.stopPropagation();
               onClose();
               // This would be where you'd add the treasure to inventory in a real game
+              console.log('Adding to inventory:', treasure);
             }}
             className={`flex-1 py-2 px-4 rounded-lg transition-colors duration-200 ${
               rarity === 'Legendary' ? 'bg-yellow-500 hover:bg-yellow-600 text-black' :
@@ -155,7 +166,7 @@ const TreasureModal: React.FC<TreasureModalProps> = ({ treasure, onClose }) => {
               'bg-gray-500 hover:bg-gray-600 text-white'
             }`}
           >
-            Add to Inventory
+            Collect Treasure
           </button>
         </div>
       </div>
